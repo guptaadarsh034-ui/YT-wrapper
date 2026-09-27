@@ -10,7 +10,6 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
-import java.io.IOException;
 
 public class MainActivity extends Activity {
 
@@ -20,19 +19,33 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        
+        try {
+            setContentView(R.layout.activity_main);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
+        // Try launching local server safely
         try {
             localServer = new LocalAnonymousServer(8080);
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
         webView = findViewById(R.id.webview);
-        setupNavigationButtons();
-        configureUltraLiteSettings();
-
-        webView.loadUrl("http://127.0.0.1:8080");
+        
+        if (webView != null) {
+            setupNavigationButtons();
+            configureUltraLiteSettings();
+            
+            // Fallback load directly if local server failed
+            if (localServer != null) {
+                webView.loadUrl("http://127.0.0.1:8080");
+            } else {
+                webView.loadUrl("https://m.youtube.com");
+            }
+        }
     }
 
     private void setupNavigationButtons() {
@@ -40,48 +53,63 @@ public class MainActivity extends Activity {
         Button btnHome = findViewById(R.id.btn_home);
         Button btnRefresh = findViewById(R.id.btn_refresh);
 
-        btnBack.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (webView != null && webView.canGoBack()) {
-                    webView.goBack();
+        if (btnBack != null) {
+            btnBack.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (webView != null && webView.canGoBack()) {
+                        webView.goBack();
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        btnHome.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (webView != null) {
-                    webView.loadUrl("http://127.0.0.1:8080");
+        if (btnHome != null) {
+            btnHome.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (webView != null) {
+                        if (localServer != null) {
+                            webView.loadUrl("http://127.0.0.1:8080");
+                        } else {
+                            webView.loadUrl("https://m.youtube.com");
+                        }
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        btnRefresh.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (webView != null) {
-                    webView.reload();
+        if (btnRefresh != null) {
+            btnRefresh.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (webView != null) {
+                        webView.reload();
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     private void configureUltraLiteSettings() {
         WebSettings settings = webView.getSettings();
 
         settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(false);
-        
-        // Disables WebView caching without using removed API 33 methods
+        settings.setDomStorageEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        
         settings.setDatabaseEnabled(false);
         settings.setGeolocationEnabled(false);
         settings.setSaveFormData(false);
 
-        webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        // Hardware acceleration for KitKat video performance
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+
+        // Cookie handling for KitKat vs Modern Android
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            cookieManager.setAcceptThirdPartyCookies(webView, true);
+        }
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -91,12 +119,6 @@ public class MainActivity extends Activity {
                 }
                 view.loadUrl(url);
                 return true;
-            }
-
-            @Override
-            public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                super.onPageStarted(view, url, favicon);
-                System.gc();
             }
 
             @Override
@@ -139,21 +161,19 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (localServer != null) {
-            localServer.stop();
+            try {
+                localServer.stop();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
 
         if (webView != null) {
             webView.clearCache(true);
             webView.clearHistory();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                CookieManager.getInstance().removeAllCookies(null);
-            } else {
-                CookieManager.getInstance().removeAllCookie();
-            }
             webView.destroy();
         }
 
-        System.gc();
         super.onDestroy();
     }
 }
