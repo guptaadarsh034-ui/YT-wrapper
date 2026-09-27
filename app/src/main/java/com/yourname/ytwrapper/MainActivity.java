@@ -16,23 +16,26 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         webView = (WebView) findViewById(R.id.webview);
-        WebSettings settings = webView.getSettings();
 
-        // Enable JavaScript and basic Web features
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
+        if (webView != null) {
+            WebSettings settings = webView.getSettings();
 
-        // Low-RAM 512MB optimizations
-        settings.setGeolocationEnabled(false);
-        settings.setSaveFormData(false);
-        settings.setDatabaseEnabled(false);
-        settings.setSupportMultipleWindows(false);
-        settings.setLoadsImagesAutomatically(true);
+            // Web functionality
+            settings.setJavaScriptEnabled(true);
+            settings.setDomStorageEnabled(true);
+            settings.setLoadWithOverviewMode(true);
+            settings.setUseWideViewPort(true);
 
-        webView.setWebViewClient(new WebViewClient());
-        webView.loadUrl("https://m.youtube.com");
+            // RAM optimizations for 512MB RAM
+            settings.setGeolocationEnabled(false);
+            settings.setSaveFormData(false);
+            settings.setDatabaseEnabled(false);
+            settings.setSupportMultipleWindows(false);
+            settings.setLoadsImagesAutomatically(true);
+
+            webView.setWebViewClient(new WebViewClient());
+            webView.loadUrl("https://m.youtube.com");
+        }
     }
 
     @Override
