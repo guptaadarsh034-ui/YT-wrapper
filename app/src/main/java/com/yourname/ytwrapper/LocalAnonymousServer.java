@@ -13,7 +13,6 @@ public class LocalAnonymousServer extends NanoHTTPD {
 
     @Override
     public Response serve(IHTTPSession session) {
-        // Generate temporary anonymous guest token locally
         String guestToken = "VISITOR_" + UUID.randomUUID().toString().substring(0, 8);
 
         String html = "<html><head>" +
