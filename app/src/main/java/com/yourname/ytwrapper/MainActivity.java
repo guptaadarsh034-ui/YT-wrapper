@@ -22,7 +22,6 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // 1. Start internal anonymous session server on phone
         try {
             localServer = new LocalAnonymousServer(8080);
         } catch (IOException e) {
@@ -33,7 +32,6 @@ public class MainActivity extends Activity {
         setupNavigationButtons();
         configureUltraLiteSettings();
 
-        // 2. Load through internal anonymous proxy
         webView.loadUrl("http://127.0.0.1:8080");
     }
 
@@ -70,25 +68,28 @@ public class MainActivity extends Activity {
         });
     }
 
+    @SuppressWarnings("deprecation")
     private void configureUltraLiteSettings() {
         WebSettings settings = webView.getSettings();
 
         settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(false); // Eliminates local storage bloat
-        settings.setAppCacheEnabled(false);
+        settings.setDomStorageEnabled(false);
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         settings.setDatabaseEnabled(false);
         settings.setGeolocationEnabled(false);
         settings.setSaveFormData(false);
         settings.setSavePassword(false);
 
-        // Force software rendering layer to keep RAM strictly below ~20MB
+        // Safe SDK check prevents error on SDK 33 compile
+        if (Build.VERSION.SDK_INT < 33) {
+            settings.setAppCacheEnabled(false);
+        }
+
         webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // Block sign-in redirects completely to protect anonymity
                 if (url.contains("accounts.google.com") || url.contains("facebook.com")) {
                     return true;
                 }
@@ -99,7 +100,6 @@ public class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
-                // Prompt Dalvik/ART garbage collector to free unused heap memory
                 System.gc();
             }
 
@@ -107,14 +107,12 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
 
-                // A. Strip ads, promotional slots, and popup banners via CSS DOM purging
                 String hideAdsScript = "javascript:(function() { " +
                         "var ads = document.querySelectorAll('ad-slot, .ytp-ad-overlay-container, #masthead-ad, .ytp-ad-message-container, ytd-promoted-sparkles-web-renderer');" +
                         "for(var i=0; i<ads.length; i++) { if(ads[i]) ads[i].parentNode.removeChild(ads[i]); }" +
                         "})()";
                 view.loadUrl(hideAdsScript);
 
-                // B. Force Video Quality Lock (Forces 240p / 360p resolution to stop buffering on slow phones)
                 String forceLowResScript = "javascript:(function() { " +
                         "var player = document.querySelector('video');" +
                         "if(player) {" +
@@ -122,7 +120,7 @@ public class MainActivity extends Activity {
                         "    try {" +
                         "      var ytPlayer = document.getElementById('movie_player');" +
                         "      if(ytPlayer && ytPlayer.setPlaybackQualityRange) {" +
-                        "        ytPlayer.setPlaybackQualityRange('small', 'medium');" + // 'small'=240p, 'medium'=360p
+                        "        ytPlayer.setPlaybackQualityRange('small', 'medium');" +
                         "      }" +
                         "    } catch(e) {}" +
                         "  });" +
@@ -144,12 +142,10 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        // Stop local proxy server
         if (localServer != null) {
             localServer.stop();
         }
 
-        // Clean up memory and auto-wipe session cookies on exit
         if (webView != null) {
             webView.clearCache(true);
             webView.clearHistory();
