@@ -68,22 +68,18 @@ public class MainActivity extends Activity {
         });
     }
 
-    @SuppressWarnings("deprecation")
     private void configureUltraLiteSettings() {
         WebSettings settings = webView.getSettings();
 
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(false);
+        
+        // Disables WebView caching without using removed API 33 methods
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        
         settings.setDatabaseEnabled(false);
         settings.setGeolocationEnabled(false);
         settings.setSaveFormData(false);
-        settings.setSavePassword(false);
-
-        // Safe SDK check prevents error on SDK 33 compile
-        if (Build.VERSION.SDK_INT < 33) {
-            settings.setAppCacheEnabled(false);
-        }
 
         webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
 
