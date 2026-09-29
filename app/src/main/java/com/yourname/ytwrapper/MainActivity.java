@@ -18,7 +18,6 @@ public class MainActivity extends Activity {
     private WebView webView;
     private LocalAnonymousServer proxyServer;
 
-    // CSS rules: Hide heavy JavaScript render targets before DOM layout step
     private static final String CSS_STRIP_BLOAT = 
         "ytd-comments, #related, ytd-compact-autoplay-renderer, " +
         ".ytm-pivot-bar-renderer, yt-icon, #masthead-ad, " +
@@ -29,7 +28,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // 1. Initialize Local NanoHTTPD Proxy
+        // 1. Initialize Local Proxy
         try {
             proxyServer = new LocalAnonymousServer(8080);
             proxyServer.start();
@@ -39,24 +38,25 @@ public class MainActivity extends Activity {
 
         webView = (WebView) findViewById(R.id.webview);
 
-        // 2. Enforce Strict Anonymous Guest Session (Clear Memory & Storage)
+        // 2. Clear previous session state
         clearAnonymousSession();
 
         // 3. Configure Low-RAM WebSettings
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(false); // Prevents heavy local storage allocations
+        settings.setDomStorageEnabled(false);
         settings.setDatabaseEnabled(false);
-        settings.setAppCacheEnabled(false);
+        
+        // REMOVED: settings.setAppCacheEnabled(false); -> Method removed in API 33
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
-        // Render priority & hardware GPU acceleration for KitKat
+        // Render priority & hardware acceleration for KitKat
         settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         }
 
-        // 4. KaiOS User-Agent Spoofing (Forces lightweight HTML layout)
+        // 4. KaiOS User-Agent Spoofing
         settings.setUserAgentString("Mozilla/5.0 (Mobile; KaiOS/2.5; TV) " +
             "AppleWebKit/537.36 (KHTML, like Gecko) KAIOS/2.5 Chrome/64.0.3282.144 Mobile Safari/537.36");
 
@@ -66,30 +66,24 @@ public class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
-                // Inject CSS during load to strip DOM elements before paint
                 injectStyle(view, CSS_STRIP_BLOAT);
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                // Force low-resolution video stream auto-lock via JavaScript
                 String resLockJs = "javascript:(function() {" +
                     "var v = document.querySelector('video');" +
                     "if(v) { v.style.width='100%'; v.style.height='100%'; }" +
-                    "document.body.style.transform = 'translateZ(0)';" + // GPU Compositing hint
+                    "document.body.style.transform = 'translateZ(0)';" +
                     "})()";
                 view.evaluateJavascript(resLockJs, null);
             }
         });
 
-        // Load YouTube over local proxy or direct low-spec interface
         webView.loadUrl("https://m.youtube.com");
     }
 
-    /**
-     * Purges local session state, cookies, and web storage to maintain guest session
-     */
     private void clearAnonymousSession() {
         try {
             WebStorage.getInstance().deleteAllData();
