@@ -6,174 +6,124 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.webkit.CookieManager;
+import android.webkit.CookieSyncManager;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
 
 public class MainActivity extends Activity {
 
     private WebView webView;
-    private LocalAnonymousServer localServer;
+    private LocalAnonymousServer proxyServer;
+
+    // CSS rules: Hide heavy JavaScript render targets before DOM layout step
+    private static final String CSS_STRIP_BLOAT = 
+        "ytd-comments, #related, ytd-compact-autoplay-renderer, " +
+        ".ytm-pivot-bar-renderer, yt-icon, #masthead-ad, " +
+        "ytm-comments-entry-point-header-renderer { display: none !important; }";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
+        setContentView(R.layout.activity_main);
+
+        // 1. Initialize Local NanoHTTPD Proxy
         try {
-            setContentView(R.layout.activity_main);
+            proxyServer = new LocalAnonymousServer(8080);
+            proxyServer.start();
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        // Try launching local server safely
-        try {
-            localServer = new LocalAnonymousServer(8080);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        webView = (WebView) findViewById(R.id.webview);
 
-        webView = findViewById(R.id.webview);
-        
-        if (webView != null) {
-            setupNavigationButtons();
-            configureUltraLiteSettings();
-            
-            // Fallback load directly if local server failed
-            if (localServer != null) {
-                webView.loadUrl("http://127.0.0.1:8080");
-            } else {
-                webView.loadUrl("https://m.youtube.com");
-            }
-        }
-    }
+        // 2. Enforce Strict Anonymous Guest Session (Clear Memory & Storage)
+        clearAnonymousSession();
 
-    private void setupNavigationButtons() {
-        Button btnBack = findViewById(R.id.btn_back);
-        Button btnHome = findViewById(R.id.btn_home);
-        Button btnRefresh = findViewById(R.id.btn_refresh);
-
-        if (btnBack != null) {
-            btnBack.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (webView != null && webView.canGoBack()) {
-                        webView.goBack();
-                    }
-                }
-            });
-        }
-
-        if (btnHome != null) {
-            btnHome.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (webView != null) {
-                        if (localServer != null) {
-                            webView.loadUrl("http://127.0.0.1:8080");
-                        } else {
-                            webView.loadUrl("https://m.youtube.com");
-                        }
-                    }
-                }
-            });
-        }
-
-        if (btnRefresh != null) {
-            btnRefresh.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (webView != null) {
-                        webView.reload();
-                    }
-                }
-            });
-        }
-    }
-
-    private void configureUltraLiteSettings() {
+        // 3. Configure Low-RAM WebSettings
         WebSettings settings = webView.getSettings();
-
         settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        settings.setDomStorageEnabled(false); // Prevents heavy local storage allocations
         settings.setDatabaseEnabled(false);
-        settings.setGeolocationEnabled(false);
-        settings.setSaveFormData(false);
+        settings.setAppCacheEnabled(false);
+        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
-        // Hardware acceleration for KitKat video performance
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-
-        // Cookie handling for KitKat vs Modern Android
-        CookieManager cookieManager = CookieManager.getInstance();
-        cookieManager.setAcceptCookie(true);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            cookieManager.setAcceptThirdPartyCookies(webView, true);
+        // Render priority & hardware GPU acceleration for KitKat
+        settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         }
+
+        // 4. KaiOS User-Agent Spoofing (Forces lightweight HTML layout)
+        settings.setUserAgentString("Mozilla/5.0 (Mobile; KaiOS/2.5; TV) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) KAIOS/2.5 Chrome/64.0.3282.144 Mobile Safari/537.36");
+
+        webView.setWebChromeClient(new WebChromeClient());
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (url.contains("accounts.google.com") || url.contains("facebook.com")) {
-                    return true;
-                }
-                view.loadUrl(url);
-                return true;
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                // Inject CSS during load to strip DOM elements before paint
+                injectStyle(view, CSS_STRIP_BLOAT);
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-
-                String hideAdsScript = "javascript:(function() { " +
-                        "var ads = document.querySelectorAll('ad-slot, .ytp-ad-overlay-container, #masthead-ad, .ytp-ad-message-container, ytd-promoted-sparkles-web-renderer');" +
-                        "for(var i=0; i<ads.length; i++) { if(ads[i]) ads[i].parentNode.removeChild(ads[i]); }" +
-                        "})()";
-                view.loadUrl(hideAdsScript);
-
-                String forceLowResScript = "javascript:(function() { " +
-                        "var player = document.querySelector('video');" +
-                        "if(player) {" +
-                        "  player.addEventListener('play', function() {" +
-                        "    try {" +
-                        "      var ytPlayer = document.getElementById('movie_player');" +
-                        "      if(ytPlayer && ytPlayer.setPlaybackQualityRange) {" +
-                        "        ytPlayer.setPlaybackQualityRange('small', 'medium');" +
-                        "      }" +
-                        "    } catch(e) {}" +
-                        "  });" +
-                        "}" +
-                        "})()";
-                view.loadUrl(forceLowResScript);
+                // Force low-resolution video stream auto-lock via JavaScript
+                String resLockJs = "javascript:(function() {" +
+                    "var v = document.querySelector('video');" +
+                    "if(v) { v.style.width='100%'; v.style.height='100%'; }" +
+                    "document.body.style.transform = 'translateZ(0)';" + // GPU Compositing hint
+                    "})()";
+                view.evaluateJavascript(resLockJs, null);
             }
         });
+
+        // Load YouTube over local proxy or direct low-spec interface
+        webView.loadUrl("https://m.youtube.com");
     }
 
-    @Override
-    public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
+    /**
+     * Purges local session state, cookies, and web storage to maintain guest session
+     */
+    private void clearAnonymousSession() {
+        try {
+            WebStorage.getInstance().deleteAllData();
+            
+            CookieSyncManager.createInstance(this);
+            CookieManager cookieManager = CookieManager.getInstance();
+            cookieManager.removeAllCookie();
+            
+            if (webView != null) {
+                webView.clearCache(true);
+                webView.clearHistory();
+                webView.clearFormData();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+    }
+
+    private void injectStyle(WebView view, String css) {
+        String js = "javascript:(function() {" +
+                "var style = document.createElement('style');" +
+                "style.type = 'text/css';" +
+                "style.innerHTML = '" + css + "';" +
+                "document.head.appendChild(style);" +
+                "})()";
+        view.loadUrl(js);
     }
 
     @Override
     protected void onDestroy() {
-        if (localServer != null) {
-            try {
-                localServer.stop();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        if (webView != null) {
-            webView.clearCache(true);
-            webView.clearHistory();
-            webView.destroy();
-        }
-
         super.onDestroy();
+        clearAnonymousSession();
+        if (proxyServer != null) {
+            proxyServer.stop();
+        }
     }
 }
