@@ -3,15 +3,14 @@ plugins {
 }
 
 android {
-    namespace 'com.yourname.ytwrapper'
-    compileSdk 33
+    compileSdkVersion 33
 
     defaultConfig {
-        applicationId "com.yourname.ytwrapper"
-        minSdk 19
-        targetSdk 33
-        versionCode 1
-        versionName "1.0"
+        applicationId "com.guptaadarsh.ytwrapper"
+        minSdkVersion 19
+        targetSdkVersion 33
+        versionCode 4
+        versionName "4.0"
     }
 
     buildTypes {
@@ -20,8 +19,14 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 }
 
 dependencies {
+    // Zero heavy dependencies to keep APK under 2MB and RAM under 20MB
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
 }
